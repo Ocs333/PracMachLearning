@@ -1,0 +1,108 @@
+---
+title: "Practical Machine Learning Course Project"
+output:
+  html_document: default
+  keep_md: yes
+
+---
+
+In this short project I try to construct a model/algorithm for classifying different movement patterns during a wight-lifting experiment. (see: http://groupware.les.inf.puc-rio.br/har.) The dataset consits of the type of movement - classified as "A","B","C","D" or "E" - acceleration data from some gyroscopic sensors attached to the people in the experiment, and some meta data, like ID and time. 
+
+Because random forest is a quite powerful tool in many cases, when there are no problems with the data (e.g. many missing or zero values), I will try to make a RF modell at first. [And because it works absolutely well on this data, that will be my only model too]
+
+#Getting and cleaning the data
+
+After reading in the data and the necessary packages, I take care of te NA values of which there are 3 types in the original data: "NA", "", and "#DIV/0!" (Excel?).  
+After that I get rid off the columns/variables with a lot of NA values. In fact there are just two types of variables: those which do not have any NAs or those which have a lot of them (more than 95%). Because of that after dropping the NA filled columns, there is no need to drop rows/observations.   
+Finally in order to easily define the RF algorithm I drop the meta information variables too, as they should not help in the classification of the experiment results. 
+
+```{r, results=FALSE, cache=TRUE, eval=FALSE}
+setwd("C:/Users/Ocs/Documents/Coursera/ML_CP")
+train<-read.csv(file = "pml-training.csv", header=T, na.strings=c("NA"), stringsAsFactors = F)
+test<-read.csv(file = "pml-testing.csv", header=T, na.strings="NA", stringsAsFactors = F)
+library(caret)
+library(randomForest)
+
+
+#There are some other non trivial NA like values
+train[train==""]<-NA
+test[test==""]<-NA
+train[train=="#DIV/0!"]<-NA
+test[test=="#DIV/0!"]<-NA
+
+#Dropping variables with mainly NA values
+#In fact all variables with NA-s
+colnas<-NULL
+for (i in 1:dim(train)[2]){
+  colnas[i]<-sum(is.na(train[,i]))
+}
+train<-train[colnas<19000]
+test<-test [colnas<19000]
+
+#Also checking for rows with NAs, but there is none, because we dropped everything in the prev step.
+#But there could be a setting in which there where columns (variables), with only some valuse missing
+rownas<-NULL
+for (j in 1:dim(train)[1]){
+  rownas[j]<-sum(is.na(train[j,]))
+}
+summary(rownas)
+
+#Also the first seven variables are IDs and similar metadata and are not needed for classification
+train<-train[,8:length(train)]
+test<-test [,8:length(test)]
+
+```
+
+# The model and validation
+
+My model will be the following random forest:
+```{r, results=FALSE, cache=TRUE,  eval=FALSE}
+modFit_true<-train(classe ~ ., method="rf",data=train)
+```
+
+So I will just use all available non-meta variables with no missing values, and hope for a robust result.  
+But before submitting, I will test it by subsetting the training data into (sub)train and (sub)test sets. I will check, whether using only the 75% of the training data can generate a strong model, which I will test on the remaining 25% data by predicting with the modell and checking the confusion matrix.
+
+```{r, results=FALSE, cache=TRUE,  eval=FALSE}
+subtrain_s <- createDataPartition(y=train$classe, p=0.75, list=FALSE)
+subtrain <- train[subtrain_s,]
+subtest <- train[-subtrain_s,]
+set.seed(42)
+modFit_s<-train(classe ~ ., method="rf",data=subtrain)
+pred <- predict(modFit_s, subtest)
+```
+```{r, echo=FALSE, results=FALSE}
+load("~/Coursera/ML_CP/workspace.RData")
+library(caret)
+```
+
+```{r}
+confusionMatrix(pred, subtest$classe)
+
+```
+
+As we can see we got an accuracy about 99% which is pretty hardcore IMHO. This shows that how powerful are machine learning and the random forest method. You can predict classes at 99% accuracy, without having a strict theoretical model like in the case of multivariate regressions for example. (What kind of sorcery is this?)
+It is also interesting that it looks like there is some kind of ordering in the classes A-E, because the algorithm only misses in a distance of one, e.g: A instead of B, B instead of C, and there are no cases for A instead of E for example.
+
+#The actual prediction
+
+For submission I trained the algorithm on the full train set, and then used the code provided at the submission page to make the files for upload. With it I earned 20/20 points.
+
+```{r, results=FALSE, cache=TRUE,  eval=FALSE}
+# The actual predicting
+set.seed(42)
+modFit_true<-train(classe ~ ., method="rf",data=train)
+pred_true <- predict(modFit_true, test)
+# the given code for submission help
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+#subDIR
+setwd("C:/Users/Ocs/Documents/Coursera/ML_CP/submission")
+pml_write_files(pred_true)
+
+```
